@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register Student</title>
+    {% load static %}
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: url('{% static "images/bg3.png" %}') no-repeat center center/cover;
+            color: #fff;
+        }
+        .container {
+            background: rgba(0, 0, 0, 0.5); /* Transparent background */
+            padding: 20px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 600px;
+            text-align: center;
+            box-shadow: 0px 0px 10px rgba(255, 255, 255, 0.2);
+        }
+        .input-group {
+            margin-bottom: 10px;
+            width: 100%;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.8);
+            color: #000;
+        }
+        .button {
+            margin-top: 15px;
+            padding: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            background-color: #007bff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .button:hover {
+            background-color: #0056b3;
+        }
+        #video {
+            display: none;
+            width: 100%;
+            max-width: 500px;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+        #loading {
+            display: none;
+            margin-top: 10px;
+            color: yellow;
+        }
+        #capturedImages {
+            margin-top: 15px;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        #capturedImages img {
+            width: 80px;
+            height: 80px;
+            margin: 5px;
+            border-radius: 5px;
+            border: 2px solid white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Register New Student</h1>
+        <form id="registerForm">
+            <input type="hidden" id="csrf_token" value="{{ csrf_token }}">
+            <div class="input-group">
+                <label for="name">Name:</label>
+                <input type="text" id="name" required>
+            </div>
+            <div class="input-group">
+                <label for="roll_number">Roll Number:</label>
+                <input type="text" id="roll_number" required>
+            </div>
+            <button type="button" onclick="startCamera()" class="button">Start Camera</button>
+        </form>
+        <video id="video" autoplay></video>
+        <button id="captureButton" class="button" style="display:none;" onclick="captureImages()">Capture Images</button>
+        <p id="loading">Capturing images, please wait...</p>
+        <div id="capturedImages"></div>
+    </div>
+
+    <script>
+        let videoStream;
+        let capturedImages = [];
+
+        function getCSRFToken() {
+            return document.getElementById("csrf_token").value;
+        }
+
+        function startCamera() {
+            const name = document.getElementById('name').value;
+            const roll_number = document.getElementById('roll_number').value;
+
+            if (!name || !roll_number) {
+                alert("Please enter Name and Roll Number.");
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    videoStream = stream;
+                    document.getElementById('video').srcObject = stream;
+                    document.getElementById('video').style.display = 'block';
+                    document.getElementById('captureButton').style.display = 'block';
+                })
+                .catch(err => console.error("Error accessing camera: ", err));
+        }
+
+        function captureImages() {
+            const video = document.getElementById('video');
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            document.getElementById("loading").style.display = "block";
+            document.getElementById("captureButton").style.display = "none";
+
+            let imageCount = 0;
+            let captureInterval = setInterval(() => {
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = canvas.toDataURL('image/png');
+                capturedImages.push(imageData.split(',')[1]);
+
+                let imgElement = document.createElement("img");
+                imgElement.src = imageData;
+                document.getElementById("capturedImages").appendChild(imgElement);
+
+                imageCount++;
+                if (imageCount >= 5) {
+                    clearInterval(captureInterval);
+                    stopCamera();
+                    sendImagesToServer();
+                }
+            }, 500);
+        }
+
+        function stopCamera() {
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+            }
+        }
+
+        function sendImagesToServer() {
+            const name = document.getElementById('name').value;
+            const roll_number = document.getElementById('roll_number').value;
+
+            fetch('/recognition/register/', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCSRFToken()
+                },
+                body: JSON.stringify({ name, roll_number, images: capturedImages })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    alert("✅ Registration Successful! " + data.message);
+                    resetForm();
+                } else {
+                    alert("❌ Error: " + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert("❌ An error occurred while registering.");
+            });
+        }
+
+        function resetForm() {
+            document.getElementById('registerForm').reset();
+            capturedImages = [];
+            document.getElementById('capturedImages').innerHTML = "";
+            stopCamera();
+        }
+    </script>
+</body>
+</html>

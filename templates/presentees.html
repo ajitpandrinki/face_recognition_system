@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presentees List</title>
+    {% load static %}
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: url('{% static "images/bg3.png" %}') no-repeat center center/cover;
+            color: #fff;
+        }
+        .container {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0px 0px 10px rgba(255, 255, 255, 0.2);
+            text-align: center;
+        }
+        h1 {
+            margin-bottom: 10px;
+        }
+        .count {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #ffff66;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #007bff; /* Blue Background for Table */
+            color: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0px 0px 10px rgba(255, 255, 255, 0.3);
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+        th {
+            background-color: #0056b3; /* Darker Blue for Table Header */
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        .error {
+            color: yellow;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Presentees</h1>
+        <p class="count">Total Present: <span id="presentCount">0</span></p>
+        
+        <!-- Table to display presentees -->
+        <table>
+            <thead>
+                <tr>
+                    <th>Roll Number</th>
+                    <th>Name</th>
+                </tr>
+            </thead>
+            <tbody id="presenteeTable">
+                <tr><td colspan="2">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        function fetchPresentees() {
+            fetch('/get_presentees/')
+                .then(response => response.json())
+                .then(data => {
+                    const tableBody = document.getElementById('presenteeTable');
+                    const count = document.getElementById('presentCount');
+
+                    if (data.presentees && data.presentees.length > 0) {
+                        tableBody.innerHTML = "";
+                        data.presentees.forEach(student => {
+                            let row = document.createElement('tr');
+                            row.innerHTML = `<td>${student.roll_number}</td><td>${student.name}</td>`;
+                            tableBody.appendChild(row);
+                        });
+                        count.textContent = data.presentees.length;
+                    } else {
+                        tableBody.innerHTML = '<tr><td colspan="2" class="error">No Present Students</td></tr>';
+                        count.textContent = "0";
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching presentees:", error);
+                    document.getElementById('presenteeTable').innerHTML = '<tr><td colspan="2" class="error">Error fetching data</td></tr>';
+                });
+        }
+
+        fetchPresentees();
+    </script>
+</body>
+</html>

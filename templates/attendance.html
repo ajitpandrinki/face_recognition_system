@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance</title>
+    {% load static %}
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: url('{% static "images/bg3.png" %}') no-repeat center center/cover;
+            color: #fff;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0px 0px 10px rgba(255, 255, 255, 0.2);
+            text-align: center;
+        }
+        h1 {
+            margin-bottom: 20px;
+        }
+        .button {
+            margin-top: 15px;
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            background-color: #28a745;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .button:hover {
+            background-color: #218838;
+        }
+        video, canvas {
+            width: 100%;
+            max-width: 500px;
+            margin-top: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+        #attendanceResult {
+            margin-top: 20px;
+            padding: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            background-color: white;
+            color: black;
+            border-radius: 5px;
+            display: none;
+            width: 100%;
+            text-align: center;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+        #imageUpload {
+            margin-top: 20px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 5px;
+            padding: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Take Attendance</h1>
+
+        <!-- Live Attendance (Camera) -->
+        <button class="button" onclick="startCamera()">Take Live Attendance</button>
+        <video id="video" autoplay></video>
+        <canvas id="canvas" style="display:none;"></canvas>
+        <button id="captureButton" class="button" style="display:none;" onclick="captureAttendance()">Capture</button>
+        <button id="stopCameraButton" class="button" style="display:none; background-color: #dc3545;" onclick="stopCamera()">Stop Camera</button>
+
+        <!-- Upload Attendance (Image Upload) -->
+        <input type="file" id="imageUpload" accept="image/*" style="margin-top: 20px;">
+        <button id="uploadButton" class="button" onclick="uploadAttendance()">Upload Image</button>
+
+        <!-- Display recognized roll numbers -->
+        <div id="attendanceResult"></div>
+    </div>
+
+    <script>
+        let videoStream;
+
+        function getCSRFToken() {
+            let cookies = document.cookie.split(';');
+            for (let cookie of cookies) {
+                let [name, value] = cookie.trim().split('=');
+                if (name === 'csrftoken') {
+                    return value;
+                }
+            }
+            return '';
+        }
+        
+        function startCamera() {
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    videoStream = stream;
+                    document.getElementById('video').srcObject = stream;
+                    document.getElementById('video').style.display = 'block';
+                    document.getElementById('captureButton').style.display = 'block';
+                    document.getElementById('stopCameraButton').style.display = 'block';
+                })
+                .catch(err => console.error("Error accessing camera: ", err));
+        }
+
+        function captureAttendance() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const context = canvas.getContext('2d');
+        
+            if (!video.srcObject) {
+                showMessage("Camera is not active. Please start the camera first.", "error");
+                return;
+            }
+        
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+            canvas.toBlob(blob => {
+                const formData = new FormData();
+                formData.append('image', blob, 'attendance.jpg');
+        
+                fetch('/recognize_face/', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': getCSRFToken() },
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.present_students) {
+                        showMessage(`✅ Attendance Marked: ${data.present_students.join(', ')}`, "success");
+                    } else if (data.error) {
+                        showMessage(`⚠️ ${data.error}`, "error");
+                    }
+                })
+                .catch(error => {
+                    console.error("❌ Fetch error:", error);
+                    showMessage("Error processing the attendance. Please try again.", "error");
+                });
+            }, 'image/jpeg');
+        
+            stopCamera();
+        }
+        
+        function stopCamera() {
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                document.getElementById('video').style.display = 'none';
+                document.getElementById('captureButton').style.display = 'none';
+                document.getElementById('stopCameraButton').style.display = 'none';
+            }
+        }
+
+        function uploadAttendance() {
+            const fileInput = document.getElementById('imageUpload');
+            if (!fileInput.files.length) {
+                showMessage("Please select an image first.", "error");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('image', fileInput.files[0]);
+
+            fetch('/upload_attendance/', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCSRFToken() },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.present_students) {
+                    showMessage(`✅ Attendance Marked: ${data.present_students.join(', ')}`, "success");
+                } else if (data.error) {
+                    showMessage(`⚠️ ${data.error}`, "error");
+                }
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                showMessage("An error occurred while processing the request.", "error");
+            });
+        }
+
+        function showMessage(message, type) {
+            const resultDiv = document.getElementById('attendanceResult');
+            resultDiv.innerHTML = message;
+            resultDiv.style.display = 'block';
+            resultDiv.className = type; // Add success/error class for styling
+        }
+    </script>
+</body>
+</html>
